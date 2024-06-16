@@ -1,0 +1,99 @@
+from google.colab import drive
+drive.mount('/content/drive')
+
+%cd '/content/drive/MyDrive/Projek Akhir AI'
+
+!pip install pandas
+
+import pandas as pd
+import numpy as np
+
+def loadGejala():
+    gejala = pd.read_csv('/content/drive/MyDrive/Projek Akhir AI/tb_gejala.csv', delimiter=";")
+    gejala.drop('id', inplace=True, axis=1)
+    return gejala
+
+def loadPenyakit():
+    penyakit = pd.read_csv('/content/drive/MyDrive/Projek Akhir AI/tb_penyakit.csv', delimiter=";", index_col='id')
+    return penyakit
+
+def loadRule():
+    rule = pd.read_csv('/content/drive/MyDrive/Projek Akhir AI/tb_rule.csv', delimiter=";", index_col='id')
+    return rule
+
+def getInput(message, response=[]):
+    if not response:
+        return input(message)
+    else:
+        resok = False
+        tempres = None
+        while resok is not True:
+            tempres = input(message)
+            if tempres not in response:
+                print("Silahkan masukan", "/".join(response))
+                resok = False
+            else:
+                resok = True
+        return tempres
+
+class ForwardChaining:
+    def __init__(self, rules_df, gejala_df, penyakit_df):
+        self.rules = []
+        self.facts = set()
+        self.gejala_df = gejala_df
+        self.penyakit_df = penyakit_df
+        self.load_rules(rules_df)
+
+    def load_rules(self, rules_df):
+        for index, row in rules_df.iterrows():
+            condition = set(row[row == 1].index)
+            conclusion = self.penyakit_df.loc[index, 'penyakit']
+            self.rules.append({"condition": condition, "conclusion": conclusion})
+
+    def add_fact(self, fact):
+        self.facts.add(fact)
+
+    def infer(self):
+        inferred_penyakit = {}
+        for rule in self.rules:
+            matched_gejala = len(rule["condition"].intersection(self.facts))
+            if matched_gejala > 0:  # Ada gejala yang cocok
+                if rule["conclusion"] not in inferred_penyakit:
+                    inferred_penyakit[rule["conclusion"]] = 0
+                inferred_penyakit[rule["conclusion"]] += matched_gejala
+        
+        if inferred_penyakit:
+            # Mengambil penyakit dengan gejala yang paling cocok
+            best_match = max(inferred_penyakit, key=inferred_penyakit.get)
+            best_score = inferred_penyakit[best_match]
+            return best_match, best_score
+        else:
+            return None, 0
+
+if __name__ == "__main__":
+    gejala = loadGejala()
+    penyakit = loadPenyakit()
+    rules = loadRule()
+
+    print("")
+    print("Halo! Saya adalah MediDetect-Bot, Saya akan mendiagnosa penyakit yang anda alami!")
+    print("Apakah anda merasakan beberapa gejala dibawah ini (y/t):")
+    print("")
+    input("Tekan enter untuk melanjutkan")
+
+    fc = ForwardChaining(rules, gejala, penyakit)
+
+    for index, row in gejala.iterrows():
+        ans = getInput(str(index+1) + ". " + row['gejala'].strip() + " ? ", ['y', 't'])
+        if ans.lower() == 'y':
+            fc.add_fact(row['kode'])
+
+    penyakit_terdeteksi, score = fc.infer()
+
+    if penyakit_terdeteksi:
+        penyakit_info = penyakit[penyakit['penyakit'] == penyakit_terdeteksi]
+        print("\nAnda Teridentifikasi Menderita:", penyakit_terdeteksi)
+        print(penyakit_info['info'].values[0])
+        print(f"Kecocokan: {score} gejala")
+    else:
+        print("Maaf penyakit anda tidak terdeteksi")
